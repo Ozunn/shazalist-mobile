@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shazalist Mobile - Apri o installa</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #000000;
+        --panel: #121212;
+        --text: #e8e8e8;
+        --muted: #a0a0a0;
+        --accent: #1db954;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+      }
+      main {
+        width: min(420px, 100%);
+        background: var(--panel);
+        border: 1px solid #222;
+        border-radius: 16px;
+        padding: 1.5rem;
+        text-align: center;
+      }
+      img.logo {
+        width: 120px;
+        height: auto;
+        margin: 0 auto 1rem;
+        display: block;
+      }
+      h1 {
+        font-size: 1.25rem;
+        margin: 0 0 0.5rem;
+        letter-spacing: 0.04em;
+      }
+      p {
+        color: var(--muted);
+        font-size: 0.95rem;
+        line-height: 1.45;
+      }
+      .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        margin-top: 1.25rem;
+      }
+      a.btn, button.btn {
+        appearance: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 0.85rem 1rem;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+        font-size: 0.95rem;
+      }
+      a.primary, button.primary {
+        background: var(--accent);
+        color: #04140a;
+      }
+      a.secondary, button.secondary {
+        background: #1f1f1f;
+        color: var(--text);
+        border: 1px solid #333;
+      }
+      .status,
+      .apk-meta {
+        margin-top: 0.75rem;
+        font-size: 0.82rem;
+        color: var(--muted);
+        min-height: 2.6em;
+        line-height: 1.3;
+      }
+      .apk-meta {
+        margin-top: 0.35rem;
+        min-height: 1.3em;
+        word-break: break-all;
+      }
+      .note {
+        margin-top: 1rem;
+        font-size: 0.8rem;
+        color: var(--muted);
+        text-align: left;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img class="logo" src="./branding/logo-shazalist.svg" alt="Shazalist" />
+      <h1>SHAZALIST MOBILE</h1>
+      <p>
+        Se l&apos;app e installata si apre con la tua playlist. Altrimenti scarica l&apos;APK
+        piu recente da GitHub. Android chiede sempre conferma per installare.
+      </p>
+      <div class="actions">
+        <a class="btn primary" id="open-app" href="#">Apri nell&apos;app</a>
+        <a
+          class="btn secondary"
+          id="download-apk"
+          href="https://github.com/Ozunn/shazalist-mobile/releases/latest"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Scarica APK (GitHub)
+        </a>
+      </div>
+      <p class="status" id="status">Preparazione link…</p>
+      <p class="apk-meta" id="apk-meta" aria-live="polite"></p>
+      <p class="note">
+        Non serve la Wi‑Fi del PC. Serve solo Internet sul telefono. Dopo l&apos;installazione
+        ripeti la scansione del QR oppure tocca «Apri nell&apos;app».
+        Le playlist molto grandi usano un QR LAN generato dal PC (stessa Wi‑Fi): non passano da questa pagina.
+      </p>
+    </main>
+    <script>
+      (function () {
+        var PACKAGE = "com.altereco.shazalist";
+        var RELEASES_API =
+          "https://api.github.com/repos/Ozunn/shazalist-mobile/releases/latest";
+        var FALLBACK_RELEASES =
+          "https://github.com/Ozunn/shazalist-mobile/releases/latest";
+        var AUTO_KEY = "shazalist_landing_auto_open_v1";
+
+        function hashParams() {
+          var hash = (window.location.hash || "").replace(/^#/, "");
+          return new URLSearchParams(hash);
+        }
+
+        function readPayload() {
+          var hp = hashParams();
+          if (hp.get("d")) return hp.get("d");
+          var params = new URLSearchParams(window.location.search);
+          return params.get("d") || "";
+        }
+
+        function alreadyTriedAutoOpen() {
+          var hp = hashParams();
+          if (hp.get("tried") === "1") return true;
+          try {
+            return sessionStorage.getItem(AUTO_KEY) === "1";
+          } catch (e) {
+            return false;
+          }
+        }
+
+        function markAutoOpenTried() {
+          try {
+            sessionStorage.setItem(AUTO_KEY, "1");
+          } catch (e) {
+            /* ignore */
+          }
+        }
+
+        function buildDeepLink(payload) {
+          if (!payload) return "shazalist://import/v2";
+          return "shazalist://import/v2?d=" + encodeURIComponent(payload);
+        }
+
+        /** Fallback URL: stessa landing ma con tried=1 cosi Chrome non riavvia l'auto-open. */
+        function buildFallbackUrl(payload) {
+          var url = new URL(window.location.href);
+          var next = new URLSearchParams();
+          if (payload) next.set("d", payload);
+          next.set("tried", "1");
+          url.hash = next.toString();
+          return url.toString();
+        }
+
+        function buildIntent(payload) {
+          var fallback = encodeURIComponent(buildFallbackUrl(payload));
+          return (
+            "intent://import/v2?d=" +
+            encodeURIComponent(payload || "") +
+            "#Intent;scheme=shazalist;package=" +
+            PACKAGE +
+            ";S.browser_fallback_url=" +
+            fallback +
+            ";end"
+          );
+        }
+
+        var payload = readPayload();
+        var deep = buildDeepLink(payload);
+        var openBtn = document.getElementById("open-app");
+        var apkBtn = document.getElementById("download-apk");
+        var status = document.getElementById("status");
+        var apkMeta = document.getElementById("apk-meta");
+
+        openBtn.setAttribute("href", deep);
+
+        function setStatus(text) {
+          status.textContent = text;
+        }
+
+        function tryOpenApp(fromAuto) {
+          if (!payload) {
+            setStatus("QR senza ricetta: usa Scarica APK oppure genera di nuovo il QR dal PC.");
+            return;
+          }
+          if (fromAuto) {
+            markAutoOpenTried();
+          }
+          setStatus("Apertura app…");
+          window.location.href = buildIntent(payload);
+          setTimeout(function () {
+            setStatus(
+              "Se l'app non si e aperta, installa l'APK e poi tocca «Apri nell'app»."
+            );
+          }, 1600);
+        }
+
+        openBtn.addEventListener("click", function (event) {
+          event.preventDefault();
+          tryOpenApp(false);
+        });
+
+        if (!payload) {
+          setStatus("Nessuna ricetta nel link — puoi comunque scaricare l'APK.");
+        } else if (alreadyTriedAutoOpen()) {
+          setStatus(
+            "Se l'app non si e aperta, installa l'APK e poi tocca «Apri nell'app»."
+          );
+        } else {
+          setTimeout(function () {
+            tryOpenApp(true);
+          }, 450);
+        }
+
+        fetch(RELEASES_API, {
+          headers: { Accept: "application/vnd.github+json" },
+        })
+          .then(function (res) {
+            if (!res.ok) throw new Error("release http " + res.status);
+            return res.json();
+          })
+          .then(function (body) {
+            var assets = body.assets || [];
+            var apk = null;
+            for (var i = 0; i < assets.length; i++) {
+              var name = String(assets[i].name || "").toLowerCase();
+              if (name.indexOf("shazalist-mobile") >= 0 && name.slice(-4) === ".apk") {
+                apk = assets[i];
+                break;
+              }
+            }
+            if (!apk) {
+              for (var j = 0; j < assets.length; j++) {
+                if (String(assets[j].name || "").toLowerCase().slice(-4) === ".apk") {
+                  apk = assets[j];
+                  break;
+                }
+              }
+            }
+            if (apk && apk.browser_download_url) {
+              apkBtn.setAttribute("href", apk.browser_download_url);
+              apkMeta.textContent = "APK: " + (apk.name || "release");
+            } else {
+              apkBtn.setAttribute("href", body.html_url || FALLBACK_RELEASES);
+            }
+          })
+          .catch(function () {
+            apkBtn.setAttribute("href", FALLBACK_RELEASES);
+          });
+      })();
+    </script>
+  </body>
+</html>
